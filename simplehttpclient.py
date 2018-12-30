@@ -13,7 +13,6 @@ import re
 
 # render html as markdown using html2text
 # https://github.com/Alir3z4/html2text
-# (this won't work on the cs server as html2text is not installed)
 def renderM(html):
     try:
         import html2text
@@ -62,10 +61,10 @@ def page(output):
     pydoc.pager(output)
 
 # the useragent string that will be used if one is not provided
-defaultUserAgent = "CSCI 3421 Assignment 3 HTTP client"
+defaultUserAgent = "simplehttpserver.py"
 
 # parse the command-line arguments
-parser = argparse.ArgumentParser(description="CSCI 3421 Assignment 3 HTTP client | Jonathan MacKenzie")
+parser = argparse.ArgumentParser(description="simplehttpserver.py | https://github.com/jonmackenzie/simplehttpclient.py")
 parser.add_argument('host', nargs="?"    , help="host to connect to")
 parser.add_argument('-e'  , '--endpoint' , help="endpoint to request (default '/')"                 , default="/")
 parser.add_argument('-p'  , '--port'     , help="port to connect to on the server"                  , default=None, type=int)
@@ -77,6 +76,7 @@ parser.add_argument('-r'  , '--server'   , help="parse and display the content o
 parser.add_argument('-m'  , '--markdown' , help="show the html response as markdown using html2text", action="store_true")
 parser.add_argument('-y'  , '--prettify' , help="prettify output using pygments"                    , action="store_true")
 parser.add_argument('-a'  , '--page'     , help="page the output (useful for long responses)"       , action="store_true")
+parser.add_argument('-f'  , '--follow'   , help="follow 3xx redirects"                              , action="store_true")
 args = parser.parse_args()
 
 # show help and exit gracefully if no arguments given
@@ -104,6 +104,19 @@ else: args.port = 443 if args.https else 80
 # make sure the endpoint starts with a slash
 if not args.endpoint[0] == '/': args.endpoint = '/' + args.endpoint
 
+host      = args.host
+endpoint  = args.endpoint
+port      = args.port
+useragent = args.useragent
+outfile   = args.outfile
+https     = args.https
+verbose   = args.verbose
+server    = args.server
+markdown  = args.markdown
+prettify  = args.prettify
+page      = args.page
+follow    = args.follow
+
 print """
 
 
@@ -116,9 +129,9 @@ print """
 """
 
 # connection and server headers will never change
-commonHeader = "Host: %s\r\nConnection: Keep-Alive\r\nUser-Agent: %s\r\nAccept: */*\r\n" % (args.host, args.useragent)
+commonHeader = "Host: %s\r\nConnection: Keep-Alive\r\nUser-Agent: %s\r\nAccept: */*\r\n" % (host, useragent)
 
-url = "%s://%s%s%s" % ("https" if args.https else "http", args.host, (":%d" % args.port) if customPort else "", args.endpoint)
+url = "%s://%s%s%s" % ("https" if https else "http", host, (":%d" % port) if customPort else "", endpoint)
 
 print "Connecting to %s\n" % url
 
@@ -133,34 +146,36 @@ output += "+\n\n\n"
 s = socket(AF_INET, SOCK_STREAM)
 s.settimeout(4)
 
-if args.https: s = ssl.wrap_socket(s)
+if https: s = ssl.wrap_socket(s)
 
-try:
-    s.connect((args.host, args.port))
+contentBegin = 0;
+
+def sendRequest():
+    # string to hold the response, returned
+    res = ""
+
+    s.connect((host, port))
 
     # form the string that will be sent as the request
     req = "GET %s HTTP/1.1\r\n%sDate: %s\r\n\r\n" \
-        % (args.endpoint, commonHeader, formatdate(timeval=None, localtime=False, usegmt=True))
-    if args.verbose:
-        output += "====== Request ======\n\n%s\n\n" % prettifyHTTP(req) if args.prettify else req
+        % (endpoint, commonHeader, formatdate(timeval=None, localtime=False, usegmt=True))
+    if verbose:
+        output += "====== Request ======\n\n%s\n\n" % prettifyHTTP(req) if prettify else req
     s.send(req)
 
-    # start receiving data, parse the content-length header if it's there
-    res = ""
+    # start receiving data, parsing important headers
     contentLength = 0
     chunked = False
     while True:
         res += s.recv(1)
-        clMatch = re.search("Content-Length: .*\r", res, re.IGNORECASE) # look for content-length header
-        chunkedMatch = re.search("transfer-encoding: chunked", res, re.IGNORECASE) # look for transfer-encoding: chunked in headers
-        if clMatch:
-            contentLength = int(clMatch.group(0)[16:-1])
-            if re.search("\r\n\r\n", res): # make sure we've got all the headers before we start relying on content-length
-                break
-        elif chunkedMatch:
-            chunked = True
-            if re.search("\r\n\r\n", res): # make sure we've got all the headers before we start trying to read chunks
-                break
+        if re.search("\r\n\r\n", res):
+            clMatch = re.search("Content-Length: .*\r", res, re.IGNORECASE) # look for content-length header
+            chunkedMatch = re.search("transfer-encoding: chunked", res, re.IGNORECASE) # look for transfer-encoding: chunked in headers
+            if clMatch:
+                contentLength = int(clMatch.group(0)[16:-1])
+            elif chunkedMatch:
+                chunked = True
+            break
 
     contentBegin = (res.find("\r\n\r\n") + 4) # index in res where the content begins (after headers)
 
@@ -203,43 +218,48 @@ try:
             res += chunk
             recBytes += len(chunk)
 
+    return res
+
+try:
+    res = sendRequest()
+
     # (try to) parse the server header
-    if args.server:
+    if server:
         serverSearch = re.search('Server: .*\r', res)
         if serverSearch:
             server = serverSearch.group(0)[8:-1]
             output += "\n====== Server ======\n\n%s\n\n\n" % server
         else: output += "\n\n !!!!!! Server type could not be determined !!!!!!\n\n"
 
-    if args.verbose:
-        output += "\n====== Headers ======\n\n%s\n\n" % prettifyHTTP(res[:contentBegin]) if args.prettify else res[:contentBegin]
+    if verbose:
+        output += "\n====== Headers ======\n\n%s\n\n" % prettifyHTTP(res[:contentBegin]) if prettify else res[:contentBegin]
 
     # what will be treated as the response output, by default just the response after the headers
     resoutput = res[contentBegin:]
 
     # if -m is provided, the response output should be the appropriately rendered text
     # if -y is provided, the response output should be the prettified version of whatever it would otherwise be
-    if args.markdown:
+    if markdown:
         resoutput = renderM(res[contentBegin:])
-        if args.prettify: resoutput = prettifyM(resoutput)
-    elif args.prettify: resoutput = prettify(res[contentBegin:])
+        if prettify: resoutput = prettifyM(resoutput)
+    elif prettify: resoutput = prettify(res[contentBegin:])
 
-    if args.outfile:
-        if args.page:
+    if outfile:
+        if page:
             print "Paging output...\n"
             page(output)
         else:
             print output
         try:
-            f = open(args.outfile, "w+")
-            f.write(resoutput.encode('utf-8') if args.markdown else resoutput)
+            f = open(outfile, "w+")
+            f.write(resoutput.encode('utf-8') if markdown else resoutput)
             f.close()
-            print ("Response written to %s") % args.outfile
+            print ("Response written to %s") % outfile
         except Exception as e:
             print "An error occurred writing the response to file: %s" % e
     else:
         output += "\n====== Response ======\n\n%s\n" % resoutput
-        if args.page:
+        if page:
             print "Paging output...\n"
             page(output)
         else:
@@ -248,17 +268,17 @@ try:
 except KeyboardInterrupt:
     print "\nExiting\n"
 
-except Exception as e:
-    print """
+ except Exception as e:
+     print """
 
-+------------------------------+
-| An unexpected error occurred |
-+------------------------------+
+ +------------------------------+
+ | An unexpected error occurred |
+ +------------------------------+
 
-Error message:
-%s
+ Error message:
+ %s
 
-    """ % e
+     """ % e
 
 s.close()
 
