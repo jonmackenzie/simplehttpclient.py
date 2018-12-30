@@ -270,17 +270,17 @@ try:
 except KeyboardInterrupt:
     print "\nExiting\n"
 
- except Exception as e:
-     print """
+except Exception as e:
+    print """
 
- +------------------------------+
- | An unexpected error occurred |
- +------------------------------+
++------------------------------+
+| An unexpected error occurred |
++------------------------------+
 
- Error message:
- %s
+Error message:
+%s
 
-     """ % e
+    """ % e
 
 s.close()
 
