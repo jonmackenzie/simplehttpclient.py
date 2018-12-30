@@ -1,6 +1,4 @@
-# some parts adapted from previous assignment
-# ditto, https://github.com/gkbrk/slowloris/blob/master/slowloris.py
-# ^ mostly the idea to use argparse and https (which I didn't expect to be a one-liner)
+# some parts inspired by https://github.com/gkbrk/slowloris/blob/master/slowloris.py
 
 from socket      import *
 from email.utils import formatdate # https://stackoverflow.com/a/225177/6157925
@@ -10,6 +8,7 @@ import argparse
 import re
 
 # I don't like ugly output on my terminal so here are some functions to pretty it up
+# (imports at the top of each function instead of global because they aren't needed for standard operation)
 
 # render html as markdown using html2text
 # https://github.com/Alir3z4/html2text
@@ -102,7 +101,10 @@ if args.port: customPort = True
 else: args.port = 443 if args.https else 80
 
 # make sure the endpoint starts with a slash
-if not args.endpoint[0] == '/': args.endpoint = '/' + args.endpoint
+# (alternative would be to always have a trailing slash at the end of the URL and then append
+# the endpoint to it, but then we'd have to make sure the endpont DOESN'T start with a slash)
+if not args.endpoint[0] == '/':
+    args.endpoint = '/' + args.endpoint
 
 host      = args.host
 endpoint  = args.endpoint
