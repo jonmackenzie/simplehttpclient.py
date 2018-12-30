@@ -55,7 +55,7 @@ def prettifyHTTP(headers):
         return "Error prettifying HTTP headers:\n%s" % e
 
 # page output
-def page(output):
+def pageOutput(output):
     import pydoc
     pydoc.pager(output)
 
@@ -263,7 +263,7 @@ try:
         output += "\n====== Response ======\n\n%s\n" % resoutput
         if page:
             print "Paging output...\n"
-            page(output)
+            pageOutput(output)
         else:
             print output
 
